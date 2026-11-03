@@ -1,0 +1,9 @@
+# Solo para el módulo nuevo de ELEGOO (ESP32-S3-WROOM-1).
+# PSRAM octal (módulos "R8"). Si al arrancar ves "PSRAM ID read error" o
+# "psram: PSRAM chip is not connected", cambia OCT por QUAD:
+#   idf.py menuconfig -> Component config -> ESP PSRAM -> Mode (QUAD/OCT)
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+# Caché de datos más grande: acelera la lectura de PSRAM
+CONFIG_ESP32S3_DATA_CACHE_64KB=y
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y

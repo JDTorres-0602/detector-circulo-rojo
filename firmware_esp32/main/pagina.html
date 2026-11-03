@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carro balón</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #16181d; color: #e8e8e8; }
+  main { max-width: 680px; margin: 0 auto; padding: 12px 16px; }
+  h1 { font-size: 1.2rem; margin: 4px 0 10px; }
+  .vista { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 8px; overflow: hidden; }
+  .vista img, .vista canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+  .fila { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+  .estado { font-family: ui-monospace, monospace; font-size: .85rem; background: #22252c; padding: 8px; border-radius: 6px; white-space: pre-wrap; }
+  button { background: #2d3240; color: #e8e8e8; border: 1px solid #444b5a; border-radius: 6px; padding: 8px 12px; font-size: 1rem; }
+  button.activo { background: #c0392b; border-color: #e74c3c; }
+  label { display: grid; grid-template-columns: 9.5em 1fr 3.5em; gap: 8px; align-items: center; margin: 6px 0; font-size: .9rem; }
+  input[type=range] { width: 100%; }
+  .flechas { display: grid; grid-template-columns: repeat(3, 64px); gap: 6px; justify-content: center; }
+  .flechas button { height: 52px; touch-action: none; user-select: none; }
+  .nota { color: #9aa0ab; font-size: .8rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Carro que sigue el balón rojo</h1>
+  <div class="vista">
+    <img id="foto" alt="cámara">
+    <canvas id="capa" width="320" height="240"></canvas>
+  </div>
+  <div class="fila">
+    <button id="bSeguir">Seguir: NO</button>
+    <button id="bColor">Modo COLOR</button>
+    <button id="bModelo">Modo MODELO</button>
+    <button id="bEntrada" title="Muestra la imagen 128x96 que de verdad entra a la visión">Ver entrada 128x96</button>
+    <button id="bMapa">Mapa: SÍ</button>
+    <a href="/foto.jpg" download="foto.jpg"><button>Guardar foto</button></a>
+  </div>
+  <div class="estado" id="estado">conectando...</div>
+
+  <h2 style="font-size:1rem">Detección</h2>
+  <label>Umbral de celda <input id="umbral" type="range" min="0.05" max="0.95" step="0.01"><span id="vUmbral"></span></label>
+  <label>Delta rojo (color) <input id="delta" type="range" min="10" max="150" step="1"><span id="vDelta"></span></label>
+  <h2 style="font-size:1rem">Seguidor</h2>
+  <label>Área objetivo <input id="area" type="range" min="2" max="60" step="1"><span id="vArea"></span></label>
+  <label>Velocidad máx. <input id="vel" type="range" min="60" max="255" step="5"><span id="vVel"></span></label>
+  <label>Kp giro <input id="kp" type="range" min="0" max="300" step="5"><span id="vKp"></span></label>
+  <label>Kd giro <input id="kd" type="range" min="0" max="80" step="1"><span id="vKd"></span></label>
+
+  <h2 style="font-size:1rem">Manual (mantén presionado)</h2>
+  <div class="flechas">
+    <span></span><button data-m="150,150">▲</button><span></span>
+    <button data-m="-130,130">◀</button><button data-m="0,0">■</button><button data-m="130,-130">▶</button>
+    <span></span><button data-m="-150,-150">▼</button><span></span>
+  </div>
+  <p class="nota">Celdas amarillas: valor del mapa 12x16. Borde rojo: celda encendida (≥ umbral).
+    Círculos: blobs; el verde es el balón que sigue el carro.</p>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const capa = $('capa'), g = capa.getContext('2d');
+let verEntrada = false, verMapa = true, ultimo = null, editando = false;
+
+async function ajustar(params) {
+  const q = new URLSearchParams(params).toString();
+  try { ultimo = await (await fetch('/ajustes?' + q)).json(); pintarControles(ultimo); } catch (e) {}
+}
+
+function pintarControles(s) {
+  $('bSeguir').textContent = 'Seguir: ' + (s.seguir ? 'SÍ' : 'NO');
+  $('bSeguir').classList.toggle('activo', s.seguir);
+  $('bColor').classList.toggle('activo', s.modo === 'color');
+  $('bModelo').classList.toggle('activo', s.modo === 'modelo');
+  $('bModelo').disabled = !s.modelo;
+  if (editando) return;
+  for (const [id, v] of [['umbral', s.umbral], ['delta', s.delta], ['area', s.area], ['vel', s.vel], ['kp', s.kp], ['kd', s.kd]]) {
+    $(id).value = v;
+    $('v' + id[0].toUpperCase() + id.slice(1)).textContent = v;
+  }
+}
+
+function dibujar(s) {
+  const W = capa.width, H = capa.height, cw = W / 16, ch = H / 12;
+  g.clearRect(0, 0, W, H);
+  if (verMapa) {
+    for (let i = 0; i < 12; i++) for (let j = 0; j < 16; j++) {
+      const v = s.mapa[i * 16 + j] / 100;
+      if (v > 0.02) { g.fillStyle = `rgba(255,220,0,${0.55 * v})`; g.fillRect(j * cw, i * ch, cw, ch); }
+      if (v >= s.umbral) { g.strokeStyle = 'rgba(255,60,60,.9)'; g.lineWidth = 1; g.strokeRect(j * cw + .5, i * ch + .5, cw - 1, ch - 1); }
+    }
+  }
+  s.blobs.forEach((b, k) => {
+    const r = Math.max(6, Math.sqrt(b[2]) * cw * 0.6);
+    g.beginPath(); g.arc(b[0] * W, b[1] * H, r, 0, 2 * Math.PI);
+    g.strokeStyle = k === s.elegido ? '#2ecc71' : '#f1c40f'; g.lineWidth = k === s.elegido ? 3 : 1.5; g.stroke();
+  });
+  g.strokeStyle = 'rgba(255,255,255,.3)'; g.beginPath(); g.moveTo(W / 2, 0); g.lineTo(W / 2, H); g.stroke();
+}
+
+function texto(s) {
+  const prueba = { '1': 'OK', '0': 'FALLÓ', '-1': 'sin vectores' }[String(s.prueba)];
+  return `modo ${s.modo}${s.modelo ? ' (autoprueba: ' + prueba + ')' : ' (sin modelo cargado)'} | seguidor: ${s.estado}\n` +
+    `cámara ${s.fps.toFixed(1)} fps | detección ${s.det_s.toFixed(1)}/s, ${s.ms.toFixed(1)} ms\n` +
+    `motores izq ${s.izq} der ${s.der} | ultrasonido ${s.dist} cm | UNO ${s.uno ? 'conectado' : 'SIN RESPUESTA'}\n` +
+    (s.obj ? `balón: x=${s.obj[0].toFixed(2)} y=${s.obj[1].toFixed(2)} área=${s.obj[2].toFixed(1)} celdas` : 'balón: ninguno') +
+    ` | blobs: ${s.blobs.length}`;
+}
+
+async function bucle() {
+  while (true) {
+    try {
+      const r = await fetch((verEntrada ? '/entrada.bmp' : '/foto.jpg') + '?t=' + Date.now());
+      const url = URL.createObjectURL(await r.blob());
+      const viejo = $('foto').src; $('foto').src = url; if (viejo.startsWith('blob:')) URL.revokeObjectURL(viejo);
+      const s = await (await fetch('/estado')).json();
+      ultimo = s; pintarControles(s); dibujar(s); $('estado').textContent = texto(s);
+    } catch (e) { $('estado').textContent = 'sin conexión con el carro...'; await new Promise(r => setTimeout(r, 500)); }
+  }
+}
+
+$('bSeguir').onclick = () => ultimo && ajustar({ seguir: ultimo.seguir ? 0 : 1 });
+$('bColor').onclick = () => ajustar({ modo: 'color' });
+$('bModelo').onclick = () => ajustar({ modo: 'modelo' });
+$('bEntrada').onclick = () => { verEntrada = !verEntrada; $('bEntrada').classList.toggle('activo', verEntrada); };
+$('bMapa').onclick = () => { verMapa = !verMapa; $('bMapa').textContent = 'Mapa: ' + (verMapa ? 'SÍ' : 'NO'); };
+for (const id of ['umbral', 'delta', 'area', 'vel', 'kp', 'kd']) {
+  const el = $(id);
+  el.oninput = () => { editando = true; $('v' + id[0].toUpperCase() + id.slice(1)).textContent = el.value; };
+  el.onchange = () => { editando = false; ajustar({ [id]: el.value }); };
+}
+let timer = null;
+document.querySelectorAll('[data-m]').forEach(b => {
+  const [izq, der] = b.dataset.m.split(',');
+  const enviar = () => fetch(`/manual?izq=${izq}&der=${der}`).catch(() => {});
+  b.onpointerdown = (e) => { e.preventDefault(); enviar(); clearInterval(timer); timer = setInterval(enviar, 200); };
+  b.onpointerup = b.onpointerleave = () => { if (timer) { clearInterval(timer); timer = null; fetch('/manual?izq=0&der=0').catch(() => {}); } };
+});
+bucle();
+</script>
+</body>
+</html>

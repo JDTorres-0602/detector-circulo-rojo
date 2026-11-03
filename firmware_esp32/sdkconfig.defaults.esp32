@@ -1,0 +1,2 @@
+# Solo para el módulo anterior de ELEGOO (ESP32-WROVER, PSRAM de 4/8 MB)
+CONFIG_SPIRAM_SPEED_80M=y

@@ -1,0 +1,7 @@
+# Librerías externas. ESP-IDF las descarga solas la primera vez que compilas
+# (quedan en la carpeta managed_components/).
+dependencies:
+  idf: ">=5.1"
+  espressif/esp32-camera: "^2.0.10"     # driver de la cámara OV2640
+  espressif/esp_jpeg: "^1.0.5"          # decodificador JPEG (jpeg_decoder.h)
+  espressif/esp-tflite-micro: "^1.3.2"  # TensorFlow Lite Micro

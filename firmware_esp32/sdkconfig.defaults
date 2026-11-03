@@ -1,0 +1,22 @@
+# Valores comunes a las dos placas. ESP-IDF los lee al crear "sdkconfig".
+# Si cambias algo aquí, borra el archivo sdkconfig y la carpeta build para que se apliquen.
+
+# Tabla de particiones propia (ver partitions.csv)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# Velocidad: CPU a 240 MHz y compilar optimizando rendimiento (la inferencia lo nota)
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_FREERTOS_HZ=1000
+
+# PSRAM: la cámara guarda sus cuadros allí
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_USE_MALLOC=y
+
+# Pila de la tarea principal
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# Servidor web
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024

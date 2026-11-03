@@ -1,0 +1,26 @@
+# ESP-IDF
+firmware_esp32/build/
+firmware_esp32/managed_components/
+firmware_esp32/sdkconfig
+firmware_esp32/sdkconfig.old
+firmware_esp32/dependencies.lock
+
+# Pruebas en el PC
+firmware_esp32/pruebas_pc/prueba
+firmware_esp32/pruebas_pc/*.exe
+firmware_esp32/pruebas_pc/*.pdb
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Resultados del cuaderno ejecutado en el PC
+salida/
+*.keras
+
+# Editores
+.vscode/
+.idea/
