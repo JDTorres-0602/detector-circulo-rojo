@@ -23,4 +23,5 @@ salida/
 
 # Editores
 .vscode/
+.clangd
 .idea/
