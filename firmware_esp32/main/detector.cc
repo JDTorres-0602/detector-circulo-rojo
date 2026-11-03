@@ -13,7 +13,12 @@
 #include "postproceso.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+// esp-tflite-micro 1.4 movió el esquema dentro de micro/; las versiones 1.3 lo tienen fuera.
+#if __has_include("tensorflow/lite/micro/schema/schema_generated.h")
+#include "tensorflow/lite/micro/schema/schema_generated.h"
+#else
 #include "tensorflow/lite/schema/schema_generated.h"
+#endif
 
 // El cuaderno escribe pruebas_vectores.h: imágenes de validación y la salida int8 que dio el
 // modelo en Colab. Si existe, al arrancar se comprueba que la ESP32 calcula lo mismo.
