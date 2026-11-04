@@ -69,17 +69,35 @@ El rojo impreso mide RGB ≈ (148, 62, 60): R − max(G,B) = 86, así que el mod
 
 Nunca marcar el cuadrado, la franja ni la camiseta. Círculo visto de lado: arrastrar hacia arriba o abajo (la medida que no se achica).
 
+### Noche: etiquetado y ronda 2 provisional (fotos reales)
+
+- **Etiquetas**: 71 fotos (45 con círculo, 26 sin círculo). Se sacó `cel01_0021` (medio círculo con el centro fuera de la foto: no se puede marcar en `etiquetar.py`).
+- Se arregló el PATH de Windows: el instalador de Python 3.12 se había puesto primero y `python` dejó de tener OpenCV. Ahora `python` = 3.14 y la 3.12 solo con `py -3.12` o `.venv`.
+
+| Corrida | Entrena con | Valida con | Resultado | Lección |
+|---|---|---|---|---|
+| A | `cel01` (de cerca, desde arriba) | `cel02` | acierto **31 %**, falsa alarma 6.7 %; COLOR 41 % / 86.7 %. Los 21 errores: **todos círculos lejanos** | El modelo solo sabe lo que hay en sus datos: nunca vio un círculo real pequeño |
+| B | `cel02` (lejos, cámara baja) | `cel01` | 100 % / 0 %, pero el modelo guardado era el de la **época 6** (val 0.14): marcaba solo los **bordes** de los círculos grandes; con umbral 0.30, 50 % | Una métrica perfecta con pocas fotos se **satura** y engaña: mirar la pérdida de validación y las imágenes |
+| C | `cel02` | `cel01` | Con el arreglo del desempate (commit `24d2141`): guardó la **época 17** (val 0.0067). **100 % / 0 % hasta umbral 0.80**, X en el centro de los círculos, mapa azul en los distractores | ✅ **Modelo de respaldo** |
+
+**Modelo de respaldo (corrida C)**: `MODELO_UMBRAL 0.200`, 67 240 bytes. Copia en `firmware_esp32/modelos/respaldo_2026-11-03/` y ya está en `firmware_esp32/main/`; el firmware compila (1.2 MB, 60 % libre).
+- En el carro **subir el umbral a ~0.5** con el deslizador "Umbral de celda" de la página (con 0.20 aparecen manchas falsas pequeñas en los bordes del cuadrado).
+- No está medido **de lejos** (validó con `cel01`, de cerca), aunque aprendió con círculos lejanos.
+- Si mañana el modelo final sale peor o no hay tiempo: copiar los 3 archivos de `modelos/respaldo_2026-11-03/` a `main/` y compilar.
+
 ---
 
 ## Pendiente para esta noche
 
-- [ ] Etiquetar `cel01` y `cel02` y revisar con `python probar_pc.py --modo color --fuente carpeta`
-- [ ] Subir `datos/` (fotos + `etiquetas.json`) a `Mi unidad/balon_rojo/`
-- [ ] **Volver a subir el cuaderno** a Colab (el viejo no tiene `SESIONES_VAL`)
-- [ ] Ronda 2 provisional: `SOLO_SINTETICOS = False`, `SESIONES_VAL = ['cel02']`, `EPOCAS = 30`, GPU T4
-- [ ] Descargar `modelo_balon.cc`, `modelo_balon.h`, `pruebas_vectores.h` desde Drive (`balon_rojo/salida`, clic derecho → Descargar = zip) → copiar a `firmware_esp32/main/` y compilar. Este es el **modelo de respaldo** para mañana
+- [x] Etiquetar `cel01` y `cel02` y revisar
+- [x] Subir `datos/` (fotos + `etiquetas.json`) a `Mi unidad/balon_rojo/`
+- [x] Volver a subir el cuaderno a Colab
+- [x] Ronda 2 provisional → modelo de respaldo (corrida C)
+- [x] Copiar el modelo de respaldo a `firmware_esp32/main/` y compilar
 - [ ] Instalar el **driver CH340** del UNO (si no aparece un puerto COM al conectarlo)
 - [ ] **Cargar las baterías** del carro
+
+**Mañana, entrenamiento final**: subir `cel03` a Drive (fotos nuevas + `etiquetas.json` actualizado) y usar `SESIONES_VAL = ['cel03']`: entrena con `cel01` + `cel02` (cerca **y** lejos).
 
 ## Plan para mañana (8:30 – 14:00, en el laboratorio)
 
