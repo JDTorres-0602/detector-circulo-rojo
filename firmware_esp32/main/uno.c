@@ -13,9 +13,11 @@
 static const char* TAG = "uno";
 static volatile int s_dist = 0;
 static volatile int64_t s_t_dato = 0;
+static ImuDatos s_imu;
+static volatile int64_t s_t_imu = 0;
 
 static void tarea_rx(void* arg) {
-    char linea[32];
+    char linea[48];
     int n = 0;
     uint8_t c;
     while (true) {
@@ -30,6 +32,15 @@ static void tarea_rx(void* arg) {
         if (linea[0] == 'U' && linea[1] == ' ') {
             s_dist = atoi(linea + 2);
             s_t_dato = esp_timer_get_time();
+        } else if (linea[0] == 'I' && linea[1] == ' ') {
+            int ax, ay, az, yaw, pitch, roll;
+            if (sscanf(linea + 2, "%d %d %d %d %d %d", &ax, &ay, &az, &yaw, &pitch, &roll) == 6) {
+                const float G = 9.80665f / 1000.0f;   // milésimas de g -> m/s²
+                s_imu = (ImuDatos){ax * G, ay * G, az * G, yaw / 10.0f, pitch / 10.0f, roll / 10.0f};
+                s_t_imu = esp_timer_get_time();
+            }
+        } else if (linea[0] == 'F' && linea[1] == 0) {
+            // aviso de freno del UNO: no hace falta registrarlo cada vez
         } else if (linea[0]) {
             ESP_LOGI(TAG, "UNO dice: %s", linea);   // mensajes de texto del UNO (p. ej. al arrancar)
         }
@@ -64,6 +75,14 @@ void uno_motores(int izq, int der) {
     uno_enviar(b);
 }
 
+void uno_servo(int grados) {
+    char b[16];
+    if (grados < 0) grados = 0;
+    if (grados > 180) grados = 180;
+    snprintf(b, sizeof(b), "V %d\n", grados);
+    uno_enviar(b);
+}
+
 int uno_distancia_cm(void) {
     return uno_ms_desde_ultimo_dato() < 500 ? s_dist : 0;
 }
@@ -71,4 +90,10 @@ int uno_distancia_cm(void) {
 uint32_t uno_ms_desde_ultimo_dato(void) {
     if (s_t_dato == 0) return UINT32_MAX;
     return (uint32_t)((esp_timer_get_time() - s_t_dato) / 1000);
+}
+
+bool uno_imu(ImuDatos* d) {
+    if (s_t_imu == 0 || esp_timer_get_time() - s_t_imu > 500000) return false;
+    *d = s_imu;
+    return true;
 }

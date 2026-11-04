@@ -134,23 +134,34 @@ int64_t detector_ejecutar(const uint8_t* rgb, float* prob) {
 
 static int autoprueba(void) {
 #ifdef HAY_VECTORES
-    // Las versiones optimizadas de las operaciones (ESP-NN) pueden redondear distinto que
-    // las de referencia de Colab: se acepta una diferencia de hasta 2 en int8.
+    // Las versiones optimizadas de las operaciones (ESP-NN) redondean distinto que las de
+    // referencia de Colab, y en ~60 capas eso se acumula: alguna celda puede diferir 20-30
+    // (de 256) aunque el modelo esté bien. Lo que importa es que en promedio coincidan y
+    // que casi ninguna celda cambie de decisión (probabilidad >= 0.5, que en int8 es >= cero
+    // de salida). Un modelo equivocado (archivos de entrenamientos distintos) falla las dos.
     float prob[MAPA_CELDAS];
-    int peor = 0;
+    float peor_media = 0;
+    int peor_cambios = 0;
+    const int cero = s_out->params.zero_point;
     for (int v = 0; v < N_VECTORES; ++v) {
         int64_t us = detector_ejecutar(VECTOR_ENTRADA[v], prob);
         const int8_t* q = s_out->data.int8;
-        int maxdif = 0;
+        int maxdif = 0, suma = 0, cambios = 0;
         for (int i = 0; i < MAPA_CELDAS; ++i) {
             int d = abs((int)q[i] - (int)VECTOR_SALIDA[v][i]);
             if (d > maxdif) maxdif = d;
+            suma += d;
+            cambios += (q[i] - cero >= 128) != (VECTOR_SALIDA[v][i] - cero >= 128);
         }
-        ESP_LOGI(TAG, "Vector %d: diferencia máxima %d (%lld ms)", v, maxdif, us / 1000);
-        if (maxdif > peor) peor = maxdif;
+        float media = (float)suma / MAPA_CELDAS;
+        ESP_LOGI(TAG, "Vector %d: diferencia media %.2f, máxima %d, celdas que cambian de decisión %d (%lld ms)",
+                 v, media, maxdif, cambios, us / 1000);
+        if (media > peor_media) peor_media = media;
+        if (cambios > peor_cambios) peor_cambios = cambios;
     }
-    bool ok = peor <= 2;
-    ESP_LOGI(TAG, "AUTOPRUEBA DEL MODELO: %s (diferencia máxima %d)", ok ? "OK" : "FALLÓ", peor);
+    bool ok = peor_media <= 3.0f && peor_cambios <= 3;
+    ESP_LOGI(TAG, "AUTOPRUEBA DEL MODELO: %s (diferencia media %.2f, cambios de decisión %d)",
+             ok ? "OK" : "FALLÓ", peor_media, peor_cambios);
     return ok ? 1 : 0;
 #else
     ESP_LOGI(TAG, "Sin pruebas_vectores.h: se omite la autoprueba del modelo");

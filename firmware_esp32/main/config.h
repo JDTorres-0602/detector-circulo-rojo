@@ -24,8 +24,35 @@
 #define UNO_PIN_RX          33
 #define UNO_PIN_TX          4
 #endif
-// Se envían al arrancar: watchdog 600 ms, freno a 12 cm, telemetría cada 100 ms, servo al frente
-#define UNO_CMD_INICIO      "W 600\nD 12\nT 100\nV 90\n"
+// ---------------- Seguridad: el ultrasonido manda ----------------
+// Si hay algo más cerca que esto AL FRENTE, el carro no avanza (sí puede girar o retroceder).
+// Se aplica en DOS lugares: el filtro final de main.c y el freno propio del UNO ("D cm").
+#define DIST_FRENO_CM       15
+// El ultrasonido solo vigila el frente si el servo está a menos de esto de 90°
+// y ya pasó FRENTE_ASENTAR_MS desde que se movió (si no, la lectura es de un lado).
+#define FRENTE_TOLERANCIA   25
+#define FRENTE_ASENTAR_MS   350
+
+#define _STR(x) #x
+#define STR(x) _STR(x)
+// Se envían al arrancar: watchdog 600 ms, freno, telemetría cada 100 ms, servo al frente
+#define UNO_CMD_INICIO      "W 600\nD " STR(DIST_FRENO_CM) "\nT 100\nV 90\n"
+
+// ---------------- Modo BÚSQUEDA AUTÓNOMA (ver autonomo.h) ----------------
+// Barrido del servo de la cabeza (cámara + ultrasonido)
+#define AUTO_SERVO_MIN      0
+#define AUTO_SERVO_MAX      180
+#define AUTO_SERVO_PASO     30      // grados entre fotos del barrido
+// Prueba: manda el servo a 150° desde la página. Si la cabeza mira a la IZQUIERDA del
+// carro deja 1; si mira a la DERECHA pon 0.
+#define AUTO_SERVO_IZQ_MAYOR 1
+#define AUTO_AVANCE_MS      3000    // si no encuentra nada, avanza esto y vuelve a escanear
+#define AUTO_VEL_AVANCE     130
+#define AUTO_VEL_GIRO       120
+// CALIBRAR: pon el carro a girar sobre su eje con AUTO_VEL_GIRO y mide cuánto tarda
+// en dar una vuelta completa (360°). ms_por_grado = ese tiempo en ms / 360.
+#define AUTO_MS_POR_GRADO   6.0f
+#define AUTO_DIST_LIBRE_CM  30      // en búsqueda, frente más cerca que esto = bloqueado
 
 // ---------------- Cámara ----------------
 #define CAMARA_XCLK_HZ      20000000
@@ -62,6 +89,13 @@
 #else
 #define UMBRAL_MODELO_DEFECTO   0.5f
 #endif
+
+// ---------------- Velocidad y RPM ESTIMADAS (el kit no tiene encoders) ----------------
+// Se calculan desde el PWM: por debajo de PWM_ARRANQUE el motor no gira; a 255 da RPM_MAX.
+// Para calibrar: marca una rueda, mándala a 255 y cuenta vueltas en 10 s (×6 = RPM).
+#define RPM_MAX             200.0f
+#define PWM_ARRANQUE        60
+#define RUEDA_DIAMETRO_CM   6.5f
 
 // ---------------- Tareas ----------------
 #define PERIODO_CONTROL_MS  100        // 10 Hz: comando a los motores

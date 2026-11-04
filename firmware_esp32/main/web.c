@@ -17,6 +17,9 @@ static const char* TAG = "web";
 // pagina.html va dentro del firmware (EMBED_TXTFILES en CMakeLists.txt)
 extern const char pagina_inicio[] asm("_binary_pagina_html_start");
 extern const char pagina_fin[] asm("_binary_pagina_html_end");
+// hmi.html.gz: el HMI en React ya comprimido (EMBED_FILES: sin 0 al final)
+extern const uint8_t hmi_inicio[] asm("_binary_hmi_html_gz_start");
+extern const uint8_t hmi_fin[] asm("_binary_hmi_html_gz_end");
 
 // El servidor atiende una petición a la vez, así que estos búferes se pueden reutilizar
 static uint8_t* s_jpeg;
@@ -49,13 +52,31 @@ static bool param_float(httpd_req_t* req, const char* clave, float* v) {
 
 static float limitar(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
+// Permite usar el HMI desde otro origen (p. ej. "npm run dev" en el PC conectado al carro)
+static void cors(httpd_req_t* req) { httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*"); }
+
+// RPM estimadas desde el PWM (no hay encoders). Con signo: negativo = hacia atrás.
+static float rpm_estimada(int pwm) {
+    int a = abs(pwm);
+    if (a <= PWM_ARRANQUE) return 0;
+    float r = RPM_MAX * (float)(a - PWM_ARRANQUE) / (float)(255 - PWM_ARRANQUE);
+    return pwm < 0 ? -r : r;
+}
+
 // ---------------------------------------------------------------- manejadores
+static esp_err_t h_hmi(httpd_req_t* req) {
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+    return httpd_resp_send(req, (const char*)hmi_inicio, hmi_fin - hmi_inicio);
+}
+
 static esp_err_t h_pagina(httpd_req_t* req) {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     return httpd_resp_send(req, pagina_inicio, pagina_fin - pagina_inicio - 1);  // -1: sin el 0 final
 }
 
 static esp_err_t h_foto(httpd_req_t* req) {
+    cors(req);
     uint32_t seq = UINT32_MAX;       // "cualquier cuadro": devuelve el último sin esperar
     size_t n = camara_ultimo_jpeg(s_jpeg, JPEG_MAX, &seq, 300);
     if (n == 0) return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "sin cuadro");
@@ -94,14 +115,41 @@ static esp_err_t h_entrada(httpd_req_t* req) {
 }
 
 static esp_err_t h_estado(httpd_req_t* req) {
+    cors(req);
+    ImuDatos imu;
+    bool hay_imu = uno_imu(&imu);
     pos_json = 0;
     xSemaphoreTake(g_mutex, portMAX_DELAY);
     const Ajustes* a = &g_ajustes;
     const Estado* e = &g_estado;
     const ParamsSeguidor* p = &g_seg.p;
-    json("{\"modo\":\"%s\",\"modelo\":%s,\"prueba\":%d,\"seguir\":%s,",
-         a->modo == MODO_MODELO ? "modelo" : "color", g_modelo_ok ? "true" : "false",
-         g_info.prueba, a->seguir ? "true" : "false");
+    const Autonomo* au = &g_auto;
+    json("{\"modo\":\"%s\",\"modelo\":%s,\"prueba\":%d,",
+         a->modo == MODO_MODELO ? "modelo" : "color", g_modelo_ok ? "true" : "false", g_info.prueba);
+    // Modo de control y búsqueda autónoma (lo que necesita el HMI)
+    json("\"control\":\"%s\",\"auto\":\"%s\",\"fijado\":%s,\"ev_fijado\":%u,\"msg\":\"%s\",",
+         a->autonomo ? "auto" : "manual", auto_nombre_estado(au->estado), au->fijado ? "true" : "false",
+         (unsigned)au->eventos_fijado, au->mensaje);
+    json("\"servo\":%d,\"frente\":%s,\"obstaculo\":%s,\"bloqueado\":%s,\"escaneos\":%u,\"obj_ang\":%.0f,",
+         e->servo, e->frente_vigilado ? "true" : "false", e->obstaculo ? "true" : "false",
+         au->bloqueado ? "true" : "false", (unsigned)au->escaneos, au->obj_angulo);
+    json("\"avance_ms\":%u,\"ms_grado\":%.1f,\"paso\":%d,\"perfil\":[",
+         (unsigned)au->p.t_avance_ms, au->p.ms_por_grado, au->p.servo_paso);
+    for (int i = 0; i < au->n_pasos; ++i)
+        json("%s[%d,%d]", i ? "," : "", au->perfil_ang[i], au->perfil[i]);
+    json("],");
+    // Velocidad / RPM estimadas, límites de distancia e IMU
+    float ri = rpm_estimada(e->izq), rd = rpm_estimada(e->der);
+    float vel = (ri + rd) / 2.0f * 3.14159f * RUEDA_DIAMETRO_CM / 60.0f;   // cm/s
+    json("\"rpm_izq\":%.0f,\"rpm_der\":%.0f,\"rpm_max\":%.0f,\"vel_cms\":%.1f,",
+         ri, rd, RPM_MAX, vel);
+    json("\"dist_freno\":%d,\"dist_libre\":%d,\"servo_izq_mayor\":%d,",
+         DIST_FRENO_CM, au->p.dist_libre_cm, au->p.servo_izq_mayor);
+    if (hay_imu)
+        json("\"imu\":{\"ax\":%.2f,\"ay\":%.2f,\"az\":%.2f,\"yaw\":%.1f,\"pitch\":%.1f,\"roll\":%.1f},",
+             imu.ax, imu.ay, imu.az, imu.yaw, imu.pitch, imu.roll);
+    else
+        json("\"imu\":null,");
     json("\"umbral\":%.2f,\"delta\":%d,\"area\":%.1f,\"vel\":%d,\"kp\":%.0f,\"kd\":%.0f,",
          a->modo == MODO_MODELO ? a->umbral_modelo : a->umbral_color, a->delta_rojo,
          p->area_objetivo, p->vel_max, p->kp_giro, p->kd_giro);
@@ -127,16 +175,13 @@ static esp_err_t h_estado(httpd_req_t* req) {
 }
 
 static esp_err_t h_ajustes(httpd_req_t* req) {
+    cors(req);
     char b[16];
     float v;
     xSemaphoreTake(g_mutex, portMAX_DELAY);
     Ajustes* a = &g_ajustes;
     if (parametro(req, "modo", b, sizeof(b)))
         a->modo = (strcmp(b, "modelo") == 0 && g_modelo_ok) ? MODO_MODELO : MODO_COLOR;
-    if (parametro(req, "seguir", b, sizeof(b))) {
-        a->seguir = b[0] == '1';
-        seguidor_activar(&g_seg, a->seguir, ahora_ms());
-    }
     if (param_float(req, "umbral", &v)) {   // el umbral que se cambia es el del modo actual
         v = limitar(v, 0.02f, 0.98f);
         if (a->modo == MODO_MODELO) a->umbral_modelo = v; else a->umbral_color = v;
@@ -146,15 +191,57 @@ static esp_err_t h_ajustes(httpd_req_t* req) {
     if (param_float(req, "vel", &v)) g_seg.p.vel_max = (int)limitar(v, 0, 255);
     if (param_float(req, "kp", &v)) g_seg.p.kp_giro = limitar(v, 0, 500);
     if (param_float(req, "kd", &v)) g_seg.p.kd_giro = limitar(v, 0, 200);
+    // Búsqueda autónoma
+    if (param_float(req, "avance_ms", &v)) g_auto.p.t_avance_ms = (uint32_t)limitar(v, 500, 10000);
+    if (param_float(req, "ms_grado", &v)) g_auto.p.ms_por_grado = limitar(v, 1, 30);
+    if (param_float(req, "paso", &v)) g_auto.p.servo_paso = (int)limitar(v, 10, 90);   // vale desde el próximo barrido
     xSemaphoreGive(g_mutex);
     return h_estado(req);
 }
 
+// /modo?m=auto  entra a BÚSQUEDA AUTÓNOMA (arranca con el escaneo inicial)
+// /modo?m=manual  sale y vuelve a MANUAL. El cambio lo aplica la tarea de control.
+static esp_err_t h_modo(httpd_req_t* req) {
+    cors(req);
+    char b[16];
+    if (parametro(req, "m", b, sizeof(b))) {
+        xSemaphoreTake(g_mutex, portMAX_DELAY);
+        g_ajustes.autonomo = strcmp(b, "auto") == 0;
+        xSemaphoreGive(g_mutex);
+    }
+    return h_estado(req);
+}
+
+// /servo?ang=0..180  solo en MANUAL (en autónomo el servo lo maneja el barrido)
+static esp_err_t h_servo(httpd_req_t* req) {
+    cors(req);
+    float ang = 90;
+    if (!param_float(req, "ang", &ang)) return httpd_resp_sendstr(req, "falta ang");
+    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    bool manual = !g_ajustes.autonomo;
+    if (manual) g_manual_servo = (int)limitar(ang, 0, 180);
+    xSemaphoreGive(g_mutex);
+    return httpd_resp_sendstr(req, manual ? "ok" : "ignorado: modo autonomo");
+}
+
+// /imu?yaw0=1  pone el yaw en 0 (el giroscopio se desvía con el tiempo)
+static esp_err_t h_imu(httpd_req_t* req) {
+    cors(req);
+    char b[8];
+    if (parametro(req, "yaw0", b, sizeof(b))) uno_enviar("Y\n");
+    return httpd_resp_sendstr(req, "ok");
+}
+
 static esp_err_t h_manual(httpd_req_t* req) {
+    cors(req);
     float izq = 0, der = 0;
     param_float(req, "izq", &izq);
     param_float(req, "der", &der);
     xSemaphoreTake(g_mutex, portMAX_DELAY);
+    if (g_ajustes.autonomo) {            // en autónomo los motores no se controlan a mano
+        xSemaphoreGive(g_mutex);
+        return httpd_resp_sendstr(req, "ignorado: modo autonomo");
+    }
     g_manual_izq = (int)limitar(izq, -255, 255);
     g_manual_der = (int)limitar(der, -255, 255);
     g_manual_t = ahora_ms();
@@ -167,7 +254,7 @@ void web_iniciar(void) {
     s_bmp = heap_caps_malloc(54 + MODELO_BYTES, MALLOC_CAP_SPIRAM);
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.stack_size = 8192;
-    cfg.max_uri_handlers = 8;
+    cfg.max_uri_handlers = 12;
     cfg.lru_purge_enable = true;
     httpd_handle_t srv = NULL;
     if (httpd_start(&srv, &cfg) != ESP_OK) {
@@ -175,12 +262,16 @@ void web_iniciar(void) {
         return;
     }
     const httpd_uri_t rutas[] = {
-        {.uri = "/", .method = HTTP_GET, .handler = h_pagina},
+        {.uri = "/", .method = HTTP_GET, .handler = h_hmi},
+        {.uri = "/debug", .method = HTTP_GET, .handler = h_pagina},
         {.uri = "/foto.jpg", .method = HTTP_GET, .handler = h_foto},
         {.uri = "/entrada.bmp", .method = HTTP_GET, .handler = h_entrada},
         {.uri = "/estado", .method = HTTP_GET, .handler = h_estado},
         {.uri = "/ajustes", .method = HTTP_GET, .handler = h_ajustes},
         {.uri = "/manual", .method = HTTP_GET, .handler = h_manual},
+        {.uri = "/modo", .method = HTTP_GET, .handler = h_modo},
+        {.uri = "/servo", .method = HTTP_GET, .handler = h_servo},
+        {.uri = "/imu", .method = HTTP_GET, .handler = h_imu},
     };
     for (size_t i = 0; i < sizeof(rutas) / sizeof(rutas[0]); ++i) httpd_register_uri_handler(srv, &rutas[i]);
     ESP_LOGI(TAG, "Servidor web listo");

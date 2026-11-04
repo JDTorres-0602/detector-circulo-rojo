@@ -19,6 +19,10 @@
   .flechas { display: grid; grid-template-columns: repeat(3, 64px); gap: 6px; justify-content: center; }
   .flechas button { height: 52px; touch-action: none; user-select: none; }
   .nota { color: #9aa0ab; font-size: .8rem; }
+  .aviso { padding: 10px; border-radius: 6px; margin: 10px 0; font-weight: 600; background: #22252c; }
+  .aviso.ok { background: #1e6f3e; }
+  .aviso.alerta { background: #8a2c22; }
+  button:disabled { opacity: .4; }
 </style>
 </head>
 <body>
@@ -28,8 +32,12 @@
     <img id="foto" alt="cámara">
     <canvas id="capa" width="320" height="240"></canvas>
   </div>
+  <div class="aviso" id="aviso">Modo manual</div>
   <div class="fila">
-    <button id="bSeguir">Seguir: NO</button>
+    <button id="bAuto">Entrar a búsqueda autónoma</button>
+    <button id="bManual">Salir a manual</button>
+  </div>
+  <div class="fila">
     <button id="bColor">Modo COLOR</button>
     <button id="bModelo">Modo MODELO</button>
     <button id="bEntrada" title="Muestra la imagen 128x96 que de verdad entra a la visión">Ver entrada 128x96</button>
@@ -48,6 +56,7 @@
   <label>Kd giro <input id="kd" type="range" min="0" max="80" step="1"><span id="vKd"></span></label>
 
   <h2 style="font-size:1rem">Manual (mantén presionado)</h2>
+  <label>Servo cabeza <input id="servo" type="range" min="0" max="180" step="5" value="90"><span id="vServo">90</span></label>
   <div class="flechas">
     <span></span><button data-m="150,150">▲</button><span></span>
     <button data-m="-130,130">◀</button><button data-m="0,0">■</button><button data-m="130,-130">▶</button>
@@ -59,7 +68,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const capa = $('capa'), g = capa.getContext('2d');
-let verEntrada = false, verMapa = true, ultimo = null, editando = false;
+let verEntrada = false, verMapa = true, ultimo = null, editando = false, editandoServo = false;
 
 async function ajustar(params) {
   const q = new URLSearchParams(params).toString();
@@ -67,8 +76,16 @@ async function ajustar(params) {
 }
 
 function pintarControles(s) {
-  $('bSeguir').textContent = 'Seguir: ' + (s.seguir ? 'SÍ' : 'NO');
-  $('bSeguir').classList.toggle('activo', s.seguir);
+  const auto = s.control === 'auto';
+  $('bAuto').classList.toggle('activo', auto);
+  $('bAuto').disabled = auto;
+  $('bManual').disabled = !auto;
+  document.querySelectorAll('[data-m]').forEach(b => b.disabled = auto);
+  $('servo').disabled = auto;
+  if (auto && !editandoServo) { $('servo').value = s.servo; $('vServo').textContent = s.servo; }
+  const av = $('aviso');
+  av.textContent = (auto ? 'AUTÓNOMO · ' + s.auto + ' · ' : '') + s.msg + (s.obstaculo ? ' · OBSTÁCULO AL FRENTE' : '');
+  av.className = 'aviso' + (s.obstaculo ? ' alerta' : (s.fijado ? ' ok' : ''));
   $('bColor').classList.toggle('activo', s.modo === 'color');
   $('bModelo').classList.toggle('activo', s.modo === 'modelo');
   $('bModelo').disabled = !s.modelo;
@@ -100,6 +117,8 @@ function dibujar(s) {
 function texto(s) {
   const prueba = { '1': 'OK', '0': 'FALLÓ', '-1': 'sin vectores' }[String(s.prueba)];
   return `modo ${s.modo}${s.modelo ? ' (autoprueba: ' + prueba + ')' : ' (sin modelo cargado)'} | seguidor: ${s.estado}\n` +
+    `control ${s.control} | búsqueda: ${s.auto} | servo ${s.servo}° | frente vigilado: ${s.frente ? 'sí' : 'NO'} | barridos ${s.escaneos}\n` +
+    `perfil: ${s.perfil.map(p => p[0] + '°:' + (p[1] >= 999 ? 'libre' : p[1])).join(' ')}\n` +
     `cámara ${s.fps.toFixed(1)} fps | detección ${s.det_s.toFixed(1)}/s, ${s.ms.toFixed(1)} ms\n` +
     `motores izq ${s.izq} der ${s.der} | ultrasonido ${s.dist} cm | UNO ${s.uno ? 'conectado' : 'SIN RESPUESTA'}\n` +
     (s.obj ? `balón: x=${s.obj[0].toFixed(2)} y=${s.obj[1].toFixed(2)} área=${s.obj[2].toFixed(1)} celdas` : 'balón: ninguno') +
@@ -118,7 +137,17 @@ async function bucle() {
   }
 }
 
-$('bSeguir').onclick = () => ultimo && ajustar({ seguir: ultimo.seguir ? 0 : 1 });
+$('bAuto').onclick = async () => { try { ultimo = await (await fetch('/modo?m=auto')).json(); pintarControles(ultimo); } catch (e) {} };
+$('bManual').onclick = async () => { try { ultimo = await (await fetch('/modo?m=manual')).json(); pintarControles(ultimo); } catch (e) {} };
+$('servo').oninput = () => { editandoServo = true; $('vServo').textContent = $('servo').value; fetch('/servo?ang=' + $('servo').value).catch(() => {}); };
+$('servo').onchange = () => { editandoServo = false; };
+// Aviso único cada vez que se fija el objeto (ev_fijado sube)
+let evVisto = null;
+setInterval(() => {
+  if (!ultimo) return;
+  if (evVisto !== null && ultimo.ev_fijado > evVisto) { const av = $('aviso'); av.textContent = '✔ Objeto fijado con éxito'; av.className = 'aviso ok'; }
+  evVisto = ultimo.ev_fijado;
+}, 250);
 $('bColor').onclick = () => ajustar({ modo: 'color' });
 $('bModelo').onclick = () => ajustar({ modo: 'modelo' });
 $('bEntrada').onclick = () => { verEntrada = !verEntrada; $('bEntrada').classList.toggle('activo', verEntrada); };

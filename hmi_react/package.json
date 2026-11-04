@@ -1,0 +1,18 @@
+{
+  "name": "hmi-carro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HMI en React del carro (se sirve desde la ESP32 en http://192.168.4.1)",
+  "type": "module",
+  "scripts": {
+    "dev": "node build.mjs --dev",
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0"
+  }
+}

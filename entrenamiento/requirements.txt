@@ -1,6 +1,7 @@
 # Herramientas del PC (capturar_fotos.py, etiquetar.py, probar_pc.py --modo color)
 numpy
 opencv-python
+pyserial        # capturar_fotos.py --usb
 
 # Solo para probar_pc.py --modo modelo (correr el .tflite en el PC).
 # Funciona con Python 3.10 a 3.12; si tu Python es más nuevo, prueba el modelo en Colab.

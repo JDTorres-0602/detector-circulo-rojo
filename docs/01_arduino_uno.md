@@ -26,7 +26,7 @@ La ESP32 **decide** y el UNO **obedece**. Se hablan por el puerto serie (pines 0
 2. **Importante:** los pines 0/1 los comparte el módulo de cámara. Antes de subir, pon el interruptor del escudo en la posición de carga (*upload*) o desconecta el cable de la cámara. Si no, la carga falla con `avrdude: stk500_getsync()`.
 3. Sube el programa. Vuelve el interruptor a su posición normal.
 4. **Levanta el carro** para que las ruedas no toquen la mesa. Abre el *Monitor Serie* a **9600** baudios con fin de línea **"Nueva línea"**.
-5. Debe aparecer `carro_uno listo`. Escribe, una por una:
+5. Debe aparecer `carro_uno listo (IMU OK)` (o `(sin IMU)` si el escudo no tiene el MPU6050). Deja el carro **quieto** al encender: los primeros segundos se calibra el giroscopio. Escribe, una por una:
 
 ```
 W 0
@@ -41,7 +41,8 @@ T 500
 
 - Con `M 120 120` las cuatro ruedas giran **hacia adelante**.
 - Con `M 120 0` giran solo las **izquierdas**. Si giran las derechas, pon `INTERCAMBIAR_LADOS 1` al inicio del `.ino`. Si un lado gira hacia atrás, usa `INVERTIR_IZQ` o `INVERTIR_DER`.
-- Con `T 500` aparece `U 34` (o el número que corresponda) dos veces por segundo. Acerca la mano al sensor y mira cómo cambia.
+- Con `T 500` aparece `U 34` (o el número que corresponda) dos veces por segundo. Acerca la mano al sensor y mira cómo cambia. Si hay IMU, también aparece `I ax ay az yaw pitch roll` (aceleraciones en milésimas de g, ángulos en décimas de grado). `V 150` mueve la cabeza; `Y` pone el yaw en 0.
+- El freno del UNO (`D cm`) solo actúa con la cabeza mirando al frente (servo a ±25° de 90): si mira a un lado, la distancia no es la del camino. Cuando frena, avisa con `F`.
 - Con `W 600` (lo que manda la ESP32 al arrancar) y luego `M 120 120`, las ruedas giran solo **0.6 s** y paran. Ese es el watchdog funcionando.
 
 ## 🧠 Por qué funciona así

@@ -7,6 +7,10 @@ firmware_esp32/dependencies.lock
 
 # Pruebas en el PC
 firmware_esp32/pruebas_pc/prueba
+firmware_esp32/pruebas_pc/prueba_autonomo
+
+# HMI en React (npm install)
+hmi_react/node_modules/
 firmware_esp32/pruebas_pc/*.exe
 firmware_esp32/pruebas_pc/*.pdb
 

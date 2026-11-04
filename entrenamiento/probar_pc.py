@@ -8,11 +8,16 @@ Fuentes:
     --fuente carpeta   fotos de datos/fotos (N / B para avanzar). Si están etiquetadas,
                        el círculo verde es la etiqueta: compárala con lo que detecta.
     --fuente carro     en vivo desde http://192.168.4.1/foto.jpg (conectado al WiFi del carro)
+    --fuente usb       en vivo por el cable USB del módulo de cámara (--usb COMx)
     --fuente webcam    la cámara del PC (otra cámara: sirve para jugar, no para medir)
+
+A la derecha, un tablero: si detecta el círculo, la certeza (0 a 1), dónde está y qué
+tan grande se ve. Teclas + y - cambian el umbral.
 
 Ejemplos:
     python probar_pc.py --modo color --fuente carpeta
     python probar_pc.py --modo modelo --tflite modelo_balon_int8.tflite --fuente carro
+    .venv\\Scripts\\python.exe probar_pc.py --modo modelo --fuente usb --usb COM12
 """
 import argparse
 import json
@@ -54,7 +59,38 @@ class Modelo:
         return np.clip((q - self.z_out) * self.s_out, 0, 1)
 
 
-def mostrar(rgb, mapa, umbral, etiqueta, titulo):
+def tablero(alto, mapa, umbral, blobs, ms, area_freno=14):
+    """Panel de la derecha: qué detecta y con cuánta certeza (0 a 1).
+    La certeza es el 'pico' de la mancha principal: la probabilidad más alta entre sus celdas."""
+    p = np.full((alto, 320, 3), 32, np.uint8)
+
+    def txt(s, y, esc=0.55, color=(235, 235, 235), grosor=1):
+        cv2.putText(p, s, (14, y), cv2.FONT_HERSHEY_SIMPLEX, esc, color, grosor)
+
+    hay = bool(blobs)
+    certeza = blobs[0]['pico'] if hay else float(mapa.max())
+    verde, rojo = (90, 210, 90), (80, 80, 230)
+    txt('CIRCULO DETECTADO' if hay else 'NO DETECTA', 42, 0.8, verde if hay else rojo, 2)
+    txt(f'certeza: {certeza:.2f}', 88, 0.85, grosor=2)
+    x0, x1, y = 14, 304, 104                     # barra 0..1 con la marca del umbral
+    cv2.rectangle(p, (x0, y), (x1, y + 22), (70, 70, 70), -1)
+    cv2.rectangle(p, (x0, y), (x0 + int((x1 - x0) * certeza), y + 22), verde if hay else rojo, -1)
+    xu = x0 + int((x1 - x0) * umbral)
+    cv2.line(p, (xu, y - 6), (xu, y + 28), (255, 255, 255), 2)
+    txt(f'umbral {umbral:.2f}  (teclas + / -)', 150, 0.5, (190, 190, 190))
+    if hay:
+        b = blobs[0]
+        lado = 'izquierda' if b['cx'] < 0.42 else ('derecha' if b['cx'] > 0.58 else 'centro')
+        txt(f'posicion: {lado}  (x = {b["cx"]:.2f})', 195)
+        txt(f'tamano: {b["area"]} celdas de {comun.GH * comun.GW}', 222)
+        txt('-> el carro frenaria aqui' if b['area'] >= area_freno else f'-> avanzaria (frena con ~{area_freno})', 249, 0.5,
+            (90, 210, 210))
+        txt(f'otras manchas: {len(blobs) - 1}', 284)
+    txt(f'{ms:.0f} ms por imagen (en el PC)', alto - 14, 0.45, (160, 160, 160))
+    return p
+
+
+def mostrar(rgb, mapa, umbral, etiqueta, titulo, ms=0.0):
     v = cv2.resize(rgb[..., ::-1], None, fx=ZOOM, fy=ZOOM, interpolation=cv2.INTER_NEAREST)
     c = comun.CELDA * ZOOM
     capa = v.copy()
@@ -78,13 +114,14 @@ def mostrar(rgb, mapa, umbral, etiqueta, titulo):
     texto = titulo + f' | blobs: {len(blobs)}' + (f" | principal x={blobs[0]['cx']:.2f} area={blobs[0]['area']}" if blobs else '')
     cv2.rectangle(v, (0, 0), (v.shape[1], 24), (0, 0, 0), -1)
     cv2.putText(v, texto, (6, 17), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-    cv2.imshow('Prueba (Q = salir)', v)
+    cv2.imshow('Prueba (Q = salir)', np.hstack([v, tablero(v.shape[0], mapa, umbral, blobs, ms)]))
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--modo', choices=['color', 'modelo'], default='color')
-    ap.add_argument('--fuente', choices=['carpeta', 'carro', 'webcam'], default='carpeta')
+    ap.add_argument('--fuente', choices=['carpeta', 'carro', 'usb', 'webcam'], default='carpeta')
+    ap.add_argument('--usb', default='COM12', help='puerto del módulo de cámara para --fuente usb')
     ap.add_argument('--tflite', default=os.path.join(AQUI, 'modelo_balon_int8.tflite'))
     ap.add_argument('--umbral', type=float, default=None, help='por defecto 0.30 (color) o 0.5 (modelo)')
     ap.add_argument('--delta', type=int, default=60, help='modo color: cuánto debe superar R a G y B')
@@ -105,6 +142,9 @@ def main():
         print('No hay fotos en datos/fotos. Prueba con --fuente carro o --fuente webcam')
         return
     cam = cv2.VideoCapture(0) if a.fuente == 'webcam' else None
+    if a.fuente == 'usb':
+        from capturar_fotos import FotosUSB
+        usb = FotosUSB(a.usb)
     i = 0
     while True:
         etiqueta = []
@@ -122,6 +162,14 @@ def main():
                 continue
             bgr = cv2.imdecode(np.frombuffer(datos, np.uint8), cv2.IMREAD_COLOR)
             titulo = 'carro'
+        elif a.fuente == 'usb':
+            try:
+                bgr = cv2.imdecode(np.frombuffer(usb.foto(), np.uint8), cv2.IMREAD_COLOR)
+            except Exception as e:
+                print('No responde el carro por USB:', e)
+                time.sleep(0.2)
+                continue
+            titulo = 'carro (USB)'
         else:
             ok, bgr = cam.read()
             if not ok:
@@ -132,11 +180,14 @@ def main():
         t0 = time.perf_counter()
         mapa = modelo.mapa(rgb) if modelo else comun.mapa_rojo(rgb, a.delta)
         ms = (time.perf_counter() - t0) * 1000
-        mostrar(rgb, mapa, umbral, etiqueta, f'{titulo} | {a.modo} {ms:.1f} ms (en el PC) | umbral {umbral:.2f}')
+        mostrar(rgb, mapa, umbral, etiqueta, f'{titulo} | {a.modo}', ms)
         t = cv2.waitKeyEx(0 if a.fuente == 'carpeta' else 1)
         c = chr(t & 0xFF).lower() if 0 <= t < 256 else ''
         if c in ('q', '\x1b'):
             break
+        if c in ('+', '-'):
+            umbral = float(np.clip(umbral + (0.05 if c == '+' else -0.05), 0.05, 0.95))
+            continue          # misma foto, nuevo umbral
         if a.fuente == 'carpeta':
             if c == 'b' or t == 2424832:
                 i = max(0, i - 1)

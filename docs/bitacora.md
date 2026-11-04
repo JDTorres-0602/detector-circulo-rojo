@@ -4,6 +4,38 @@ Registro de lo que se hizo, lo que se decidió y por qué. Lo más reciente va a
 
 ---
 
+## 2026-11-04 — Laboratorio: carro real, modelo final y merge con el HMI
+
+### Hardware (primer arranque real)
+- ESP32-S3 **QFN56 con 8 MB de PSRAM integrada** (modo OCT correcto), cámara **OV3660** (no OV2640), puerto **COM12**.
+- La primera carga necesitó **BOOT + RST** (el firmware de fábrica no deja reiniciar por USB); las siguientes son automáticas.
+- Arreglos: `vTaskDelay(1)` en la tarea de visión (saltaba el watchdog de la tarea IDLE del núcleo 1).
+- **Fotos por cable USB** (`usb_fotos.c` + `capturar_fotos.py --usb COM12`): el WiFi era demasiado lento desde el PC.
+
+### Autoprueba del modelo
+La diferencia máxima de 29 no era un error: las funciones optimizadas (`esp-nn`) redondean distinto que las de referencia de Colab, y en el PC con funciones optimizadas da lo mismo (23). Ahora la autoprueba exige **diferencia media ≤ 3 y ≤ 3 celdas que cambien de decisión**. Resultado en el carro: media 0.52, 0 cambios → **OK**.
+
+### Dataset y modelo final
+- `cel03` (36 fotos, cámara del carro, laboratorio) y `cel04` (26 fotos, cámara del carro, otro salón). Total: 133 fotos etiquetadas.
+- Sin GPU de Colab (cuota agotada): **entrenado en el PC** (Ryzen 7, ~20 s por época) con `entrenamiento/.venv` + TensorFlow 2.21.
+- Entrena `cel01`+`cel02`+`cel03`, valida `cel04`: **MODELO 88.9 % vs COLOR 66.7 %** de acierto (falsa alarma 5.9 % los dos); int8: 77.8 % / 0 %. Umbral 0.48. Copia en `firmware_esp32/modelos/final_2026-11-04/`.
+- El modelo marca con seguridad el **centro** del círculo: la mancha mide pocas celdas aunque esté cerca. **Calibrar "Área objetivo"** con el tablero (`probar_pc.py --modo modelo --fuente usb`) a la distancia de frenado deseada.
+
+### Merge con el trabajo del compañero (HMI + búsqueda autónoma + IMU)
+Respaldo previo en `C:\proyectos\respaldo_antes_merge_2026-11-04`. Su versión partía de la nuestra de hoy (modelo, autoprueba y USB idénticos).
+- **Tomado tal cual:** `autonomo.c/h` (escaneo con la cabeza → alinear → confirmar → seguir; si no ve nada avanza 3 s; esquiva; el ultrasonido manda), modos MANUAL / AUTÓNOMO (reemplazan "Seguir"), servo manual, filtro de seguridad en `main.c` (`DIST_FRENO_CM` = 15), IMU, RPM estimadas, `/modo`, `/servo`, `/imu`, CORS, HMI React en `/` y la página vieja en `/debug`.
+- **Arduino:** su versión (IMU MPU6050, mediana de 3 lecturas, freno solo con la cabeza al frente, aviso `F`) **+ lo que se había perdido de la nuestra:** `INTERCAMBIAR_LADOS`, `W 0` / `T 0` para apagar watchdog y telemetría al probar a mano, y el mensaje `carro_uno listo`.
+- **HMI:** `hmi_react/` en la raíz; `build.mjs` corregido (apuntaba a `main_ESP32_carrito/` y armaba la ruta con `pathname`, que falla en Windows). El `hmi.html.gz` embebido es idéntico a su `dist/index.html`.
+- **Prueba:** `firmware_esp32/pruebas_pc/prueba_autonomo.c` (se compila con `python -m ziglang cc ...`): los 7 escenarios pasan.
+- Compilan: ESP32 1.37 MB (57 % libre), UNO 38 % de flash / 27 % de RAM.
+
+### Pendiente
+- [ ] Cargar el firmware del merge en la ESP32 y `carro_uno.ino` en el UNO (interruptor en **Upload** al subir, luego **Cam**)
+- [ ] Probar motores (guía 01), servo (`AUTO_SERVO_IZQ_MAYOR`: con 150° la cabeza debe mirar a la izquierda) y calibrar `AUTO_MS_POR_GRADO`
+- [ ] Calibrar umbral y área objetivo; fijarlos en el firmware
+
+---
+
 ## 2026-11-03 — De la nube al PC, círculo rojo impreso, primer entrenamiento
 
 ### Decisiones importantes

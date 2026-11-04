@@ -38,7 +38,8 @@ uno: UNO dice: carro_uno listo        <- solo si el UNO está conectado y encend
 ## 3. La página del carro
 
 1. Conecta tu celular o PC a la red **CarroBalon-XXXX** (clave `balon2026`).
-2. Abre **http://192.168.4.1**.
+2. Abre **http://192.168.4.1/debug** (la página de depuración y ajustes).
+   En **http://192.168.4.1** está el HMI en React: video con HUD, cruceta, servo, IMU, radar del barrido y el modo autónomo (ver `hmi_react/LEEME.md`).
 
 Vas a ver el video con una cuadrícula de **12×16 celdas** encima. Cada celda pinta en amarillo **qué fracción de sus píxeles es roja**, y las que pasan el umbral se marcan con borde rojo. Los círculos son *blobs* (grupos de celdas encendidas); el verde es el que sigue el carro.
 
@@ -48,7 +49,7 @@ Prueba esto, en orden:
 2. **"Ver entrada 128x96":** así ve el mundo la visión. Ese es el tamaño con el que trabajará el modelo.
 3. **Delta rojo:** súbelo y bájalo mirando el mapa. Busca un valor donde el balón se encienda completo y el resto de la escena no.
 4. **Control manual:** mantén presionadas las flechas.
-5. **Seguir: SÍ** con el carro en el piso. Mueve el balón despacio.
+5. **Entrar a búsqueda autónoma** con el carro en el piso: barre con la cabeza (cámara + ultrasonido), gira hacia el objeto, lo confirma y lo sigue; si no lo ve, avanza 3 s y vuelve a buscar. **Salir a manual** lo detiene. El ultrasonido siempre manda: con algo a menos de `DIST_FRENO_CM` (15 cm) al frente, no avanza. La lógica está en `autonomo.c` y se prueba en el PC con `pruebas_pc/prueba_autonomo.c`.
 
 ## 🧠 Qué está pasando por dentro
 
