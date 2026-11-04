@@ -150,6 +150,7 @@ static esp_err_t h_estado(httpd_req_t* req) {
              imu.ax, imu.ay, imu.az, imu.yaw, imu.pitch, imu.roll);
     else
         json("\"imu\":null,");
+    json("\"zm\":%.2f,\"tgiro\":%u,", p->zona_muerta, (unsigned)p->t_giro_valido_ms);
     json("\"umbral\":%.2f,\"delta\":%d,\"area\":%.1f,\"vel\":%d,\"kp\":%.0f,\"kd\":%.0f,",
          a->modo == MODO_MODELO ? a->umbral_modelo : a->umbral_color, a->delta_rojo,
          p->area_objetivo, p->vel_max, p->kp_giro, p->kd_giro);
@@ -191,6 +192,8 @@ static esp_err_t h_ajustes(httpd_req_t* req) {
     if (param_float(req, "vel", &v)) g_seg.p.vel_max = (int)limitar(v, 0, 255);
     if (param_float(req, "kp", &v)) g_seg.p.kp_giro = limitar(v, 0, 500);
     if (param_float(req, "kd", &v)) g_seg.p.kd_giro = limitar(v, 0, 200);
+    if (param_float(req, "zm", &v)) g_seg.p.zona_muerta = limitar(v, 0, 0.5f);
+    if (param_float(req, "tgiro", &v)) g_seg.p.t_giro_valido_ms = (uint32_t)limitar(v, 0, 1000);   // 0 = siempre
     // Búsqueda autónoma
     if (param_float(req, "avance_ms", &v)) g_auto.p.t_avance_ms = (uint32_t)limitar(v, 500, 10000);
     if (param_float(req, "ms_grado", &v)) g_auto.p.ms_por_grado = limitar(v, 1, 30);

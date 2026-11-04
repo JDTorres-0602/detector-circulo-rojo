@@ -29,8 +29,15 @@ Respaldo previo en `C:\proyectos\respaldo_antes_merge_2026-11-04`. Su versión p
 - **Prueba:** `firmware_esp32/pruebas_pc/prueba_autonomo.c` (se compila con `python -m ziglang cc ...`): los 7 escenarios pasan.
 - Compilan: ESP32 1.37 MB (57 % libre), UNO 38 % de flash / 27 % de RAM.
 
+### Primera prueba en el piso: el seguimiento oscilaba
+Buscar, esquivar y fijar el objeto funcionó bien; el HMI también. Pero al **seguir**, el carro giraba de más, perdía el círculo y, centrado, "bailaba".
+- **Causa** (reproducida en `pruebas_pc/prueba_seguimiento.c`, que usa el `seguidor.c` real): la imagen llega con ~0.3 s de retraso (cuadro cada ~140 ms + ~150 ms del modelo) y el carro gira hasta ~170°/s: entre dos detecciones se pasa del círculo y lo saca del campo de visión (±30°). Además el blob del modelo salta de a una celda (0.125 de error) y la zona muerta era 0.08, así que corregía todo el tiempo aun centrado. Con los valores viejos el círculo se salía de la imagen en los 6 escenarios simulados, incluso empezando centrado.
+- **Arreglo** en `seguidor.c`: cada detección ordena girar solo durante `t_giro_valido_ms = 120` (girar, mirar, girar), `kp 120 → 60`, `kd 12 → 0` (la derivada amplificaba los saltos de celda), zona muerta `0.08 → 0.15` (centrado = recto), giro máx `130 → 90`, velocidad máx `140 → 110`. Estable en las 6 condiciones probadas (giro de 100, 167 y 250°/s; retraso de 150 y 250 ms); peor error medio 2.9° con los valores del carro.
+- Se afinan en vivo en `/debug`: **Kp, Kd, Velocidad**, y los nuevos **Zona muerta** y **Giro por detección (ms)**. Si sigue pasándose: bajar Kp o Giro por detección. Si tarda en corregir: subir Kp un poco.
+
 ### Pendiente
-- [ ] Cargar el firmware del merge en la ESP32 y `carro_uno.ino` en el UNO (interruptor en **Upload** al subir, luego **Cam**)
+- [x] Cargar el firmware del merge en la ESP32 y `carro_uno.ino` en el UNO (interruptor en **Upload** al subir, luego **Cam**)
+- [ ] Cargar el firmware con el seguimiento corregido y probarlo en el piso
 - [ ] Probar motores (guía 01), servo (`AUTO_SERVO_IZQ_MAYOR`: con 150° la cabeza debe mirar a la izquierda) y calibrar `AUTO_MS_POR_GRADO`
 - [ ] Calibrar umbral y área objetivo; fijarlos en el firmware
 

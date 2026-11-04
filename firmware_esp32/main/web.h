@@ -6,7 +6,7 @@
 //    /foto.jpg      último cuadro de la cámara, 320x240 (sirve para armar el dataset)
 //    /entrada.bmp   la imagen 128x96 que de verdad entra a la visión
 //    /estado        JSON: mapa 12x16, blobs, estado del seguidor, velocidades...
-//    /ajustes?...   modo=color|modelo umbral= delta= area= vel= kp= kd=
+//    /ajustes?...   modo=color|modelo umbral= delta= area= vel= kp= kd= zm= tgiro=
 //                   avance_ms= ms_grado= paso=   (búsqueda autónoma)
 //    /modo?m=auto|manual  entrar / salir de la BÚSQUEDA AUTÓNOMA
 //    /manual?izq=&der=    control manual de motores (expira si no se repite; ignorado en autónomo)

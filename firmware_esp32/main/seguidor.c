@@ -18,12 +18,16 @@ static float distancia(float ax, float ay, float bx, float by) {
 void seguidor_params_defecto(ParamsSeguidor* p) {
     p->confirmaciones = 2;
     p->salto_max = 0.30f;
-    p->kp_giro = 120.0f;
-    p->kd_giro = 12.0f;
-    p->zona_muerta = 0.08f;
-    p->giro_max = 130;
+    // Afinado con pruebas_pc/prueba_seguimiento.c: la imagen llega con ~0.3 s de retraso y
+    // el carro gira hasta ~170°/s, así que un giro fuerte o continuo se pasa del balón y lo
+    // saca de la imagen. Estable con 100-250°/s de giro y 150-250 ms de retraso del modelo.
+    p->kp_giro = 60.0f;
+    p->kd_giro = 0.0f;           // la derivada amplifica los saltos de una celda del blob
+    p->zona_muerta = 0.15f;      // > 1 celda (0.125 de error): centrado = recto, sin zigzag
+    p->giro_max = 90;
     p->error_solo_giro = 0.50f;
-    p->vel_max = 140;
+    p->t_giro_valido_ms = 120;   // ~1 paso de control por detección: girar, mirar, girar
+    p->vel_max = 110;
     p->pwm_min = 70;
     p->area_objetivo = 14.0f;
     p->dist_min_cm = 0;          // el UNO ya frena solo con el comando "D" (ver config.h)
@@ -122,7 +126,10 @@ void seguidor_paso(Seguidor* s, uint32_t t, int dist_cm, int* izq, int* der) {
         s->estado = SEG_SIGUIENDO;
         // Giro: controlador PD. P = "qué tan descentrado está", D = "qué tan rápido se mueve"
         float e = s->error;
-        float giro = (fabsf(e) < p->zona_muerta) ? 0.0f : p->kp_giro * e + p->kd_giro * s->derivada;
+        // La detección describe dónde ESTABA el balón (la imagen llega con ~0.3 s de retraso):
+        // pasado t_giro_valido_ms ya se giró lo que pedía, así que se espera la siguiente.
+        bool fresca = p->t_giro_valido_ms == 0 || transcurrido(t, s->t_det_anterior) <= p->t_giro_valido_ms;
+        float giro = (fabsf(e) < p->zona_muerta || !fresca) ? 0.0f : p->kp_giro * e + p->kd_giro * s->derivada;
         giro = limitar(giro, -p->giro_max, p->giro_max);
 
         // Avance: rápido si el balón se ve pequeño (lejos), cero al llegar a area_objetivo

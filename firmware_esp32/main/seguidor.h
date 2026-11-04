@@ -32,6 +32,8 @@ typedef struct {
     float zona_muerta;        // error que se ignora (evita zigzag)
     int   giro_max;
     float error_solo_giro;    // con error mayor que esto, primero gira sin avanzar
+    uint32_t t_giro_valido_ms;  // una detección solo ordena girar durante este tiempo; después
+                                // se espera la siguiente (la imagen llega con retraso). 0 = siempre
     // Avance (proporcional a "qué tan lejos": se mide con el área del blob)
     int   vel_max;
     int   pwm_min;            // por debajo de esto los motores no se mueven

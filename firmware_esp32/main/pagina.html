@@ -54,6 +54,8 @@
   <label>Velocidad máx. <input id="vel" type="range" min="60" max="255" step="5"><span id="vVel"></span></label>
   <label>Kp giro <input id="kp" type="range" min="0" max="300" step="5"><span id="vKp"></span></label>
   <label>Kd giro <input id="kd" type="range" min="0" max="80" step="1"><span id="vKd"></span></label>
+  <label>Zona muerta (centrado = recto) <input id="zm" type="range" min="0" max="0.4" step="0.01"><span id="vZm"></span></label>
+  <label>Giro por detección (ms) <input id="tgiro" type="range" min="0" max="400" step="10"><span id="vTgiro"></span></label>
 
   <h2 style="font-size:1rem">Manual (mantén presionado)</h2>
   <label>Servo cabeza <input id="servo" type="range" min="0" max="180" step="5" value="90"><span id="vServo">90</span></label>
@@ -90,7 +92,7 @@ function pintarControles(s) {
   $('bModelo').classList.toggle('activo', s.modo === 'modelo');
   $('bModelo').disabled = !s.modelo;
   if (editando) return;
-  for (const [id, v] of [['umbral', s.umbral], ['delta', s.delta], ['area', s.area], ['vel', s.vel], ['kp', s.kp], ['kd', s.kd]]) {
+  for (const [id, v] of [['umbral', s.umbral], ['delta', s.delta], ['area', s.area], ['vel', s.vel], ['kp', s.kp], ['kd', s.kd], ['zm', s.zm], ['tgiro', s.tgiro]]) {
     $(id).value = v;
     $('v' + id[0].toUpperCase() + id.slice(1)).textContent = v;
   }
@@ -152,7 +154,7 @@ $('bColor').onclick = () => ajustar({ modo: 'color' });
 $('bModelo').onclick = () => ajustar({ modo: 'modelo' });
 $('bEntrada').onclick = () => { verEntrada = !verEntrada; $('bEntrada').classList.toggle('activo', verEntrada); };
 $('bMapa').onclick = () => { verMapa = !verMapa; $('bMapa').textContent = 'Mapa: ' + (verMapa ? 'SÍ' : 'NO'); };
-for (const id of ['umbral', 'delta', 'area', 'vel', 'kp', 'kd']) {
+for (const id of ['umbral', 'delta', 'area', 'vel', 'kp', 'kd', 'zm', 'tgiro']) {
   const el = $(id);
   el.oninput = () => { editando = true; $('v' + id[0].toUpperCase() + id.slice(1)).textContent = el.value; };
   el.onchange = () => { editando = false; ajustar({ [id]: el.value }); };
