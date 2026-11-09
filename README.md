@@ -1,4 +1,4 @@
-# Carro que sigue un balón rojo (ESP32 + Arduino UNO + TinyML)
+# Carro que sigue un círculo rojo (ESP32 + Arduino UNO + TinyML)
 
 Un carro ELEGOO Smart Robot Car V4.0 que **ve un balón rojo con su cámara y lo sigue**. La detección corre **dentro de la ESP32**, sin computador ni internet.
 
